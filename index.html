@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Vermont Power Poles – H3 Hexagon Heatmap</title>
+    <title>H3Resolution</title>
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.css" rel="stylesheet">
@@ -22,7 +22,7 @@
         #app {
             width: 637px; height: 849px;
             display: flex; flex-direction: column; overflow: hidden;
-            box-shadow: 0 0 40px rgba(0,0,0,0.15);
+            /* box-shadow removed */
         }
 
         #top-panel {
@@ -800,7 +800,7 @@
         }
         const animData = { type: 'FeatureCollection', features: animFeatures };
 
-        // Show circles now, icons after animation (symbol relayout each frame is slow)
+        // Show circles during animation (fast), then swap to icons at end (icon includes red circle bg)
         map.setLayoutProperty('random-poles-circle', 'visibility', 'visible');
         if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'none');
 
@@ -819,6 +819,7 @@
             if (progress < 1) {
                 _redDotAnimFrame = requestAnimationFrame(animate);
             } else {
+                map.setLayoutProperty('random-poles-circle', 'visibility', 'none');
                 if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'visible');
                 _redDotAnimFrame = null;
             }
@@ -1049,7 +1050,7 @@
         // (animateRedDotsFromBubbles shows them, animateRedDotsToBubbles hides them)
         // Only set directly when no animation is happening (e.g. initial load)
         if (map.getLayer('random-poles-circle') && activeRes === prevRes) {
-            map.setLayoutProperty('random-poles-circle', 'visibility', activeRes === 9 ? 'visible' : 'none');
+            map.setLayoutProperty('random-poles-circle', 'visibility', 'none');
             if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', activeRes === 9 ? 'visible' : 'none');
         }
     }
@@ -1277,9 +1278,10 @@
                 layout: {
                     'visibility': 'none',
                     'icon-image': 'outage-icon',
-                    'icon-size': 0.06,
+                    'icon-size': 0.09,
                     'icon-allow-overlap': true,
-                    'icon-ignore-placement': true
+                    'icon-ignore-placement': true,
+                    'symbol-z-elevate': true
                 },
                 paint: {
                     'icon-opacity': ['case', ['==', ['get', 'isCenter'], 1], 0.95, 0.35]
