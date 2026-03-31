@@ -1,0 +1,1714 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Vermont Power Poles – H3 Hexagon Heatmap</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <style>
+        @font-face { font-family: 'PP Neue Montreal'; src: url('PPNeueMontreal-Book.ttf') format('truetype'); font-weight: 400; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal'; src: url('PPNeueMontreal-Medium.ttf') format('truetype'); font-weight: 500; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal'; src: url('PPNeueMontreal-SemiBold.ttf') format('truetype'); font-weight: 600; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal'; src: url('PPNeueMontreal-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal Mono'; src: url('PPNeueMontrealMono-Book.otf') format('opentype'); font-weight: 400; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal Mono'; src: url('PPNeueMontrealMono-Medium.otf') format('opentype'); font-weight: 500; font-style: normal; }
+        @font-face { font-family: 'PP Neue Montreal Mono'; src: url('PPNeueMontrealMono-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'PP Neue Montreal', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #ffffff; display: flex; justify-content: center; align-items: flex-start; }
+
+        #app {
+            width: 637px; height: 849px;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 0 40px rgba(0,0,0,0.15);
+        }
+
+        #top-panel {
+            flex: 0 0 auto;
+            padding: 10px 16px 8px;
+            background: #fff;
+            z-index: 1;
+            display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+        }
+        #top-panel h1 { font-size: 20px; margin: 0; color: #1a1a2e; white-space: nowrap; }
+        #top-panel .subtitle { font-size: 14px; color: #888; margin: 0; }
+
+        .res-tabs {
+            display: flex; gap: 12px; width: 100%; justify-content: center; align-items: flex-end;
+        }
+        .res-tab {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            cursor: pointer; user-select: none; padding: 4px 0;
+            flex: 1;
+        }
+        .res-tab-label {
+            font-family: 'PP Neue Montreal', -apple-system, sans-serif;
+            font-size: 18px; font-weight: 600;
+            color: #ccc; transition: color 0.3s ease;
+        }
+        .res-tab.active .res-tab-label { color: #6B2FBF; }
+        .res-tab:hover .res-tab-label { color: #9B7EC8; }
+        .res-tab.active:hover .res-tab-label { color: #6B2FBF; }
+        .res-tab-bar {
+            width: 100%; height: 6px; border-radius: 0;
+            background: #ddd; transition: background 0.3s ease;
+        }
+        .res-tab.active .res-tab-bar { background: #6B2FBF; }
+        .res-tab-top { display: flex; align-items: flex-end; gap: 4px; margin-bottom: 6px; }
+        .res-hex { color: #ccc; transition: color 0.3s ease; }
+        .res-tab.active .res-hex { color: #6B2FBF; }
+        .res-tab:hover .res-hex { color: #9B7EC8; }
+        .res-tab.active:hover .res-hex { color: #6B2FBF; }
+
+        #map-wrap { flex: 1; min-height: 0; position: relative; }
+        #map { width: 100%; height: 100%; }
+
+
+        .spotlight-popup .mapboxgl-popup-content {
+            background: #1a1a2e; color: #fff; padding: 8px 14px;
+            border-radius: 6px; font-family: -apple-system, sans-serif; font-size: 13px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .spotlight-popup .mapboxgl-popup-tip { border-top-color: #1a1a2e; }
+        .spotlight-popup .mapboxgl-popup-content strong { font-size: 16px; }
+        #loading-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #ffffff; display: flex; align-items: center; justify-content: center;
+            z-index: 100; transition: opacity 0.5s ease;
+        }
+        #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .loading-spinner {
+            width: 32px; height: 32px; border: 3px solid #e0d4f5;
+            border-top-color: #3F1781; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .mapboxgl-canvas { transition: opacity 80ms ease; }
+        .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right { z-index: 12 !important; }
+        #metaball-gl {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10;
+            display: none;
+        }
+        #number-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 11;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div id="top-panel">
+        <div class="res-tabs" id="res-tabs">
+            <div class="res-tab active" data-idx="0">
+                <div class="res-tab-top">
+                    <svg class="res-hex" width="28" height="28" viewBox="0 0 28 28"><polygon points="14,1 26,7.5 26,20.5 14,27 2,20.5 2,7.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                    <span class="res-tab-label">County</span>
+                </div>
+                <div class="res-tab-bar"></div>
+            </div>
+            <div class="res-tab" data-idx="1">
+                <div class="res-tab-top">
+                    <svg class="res-hex" width="20" height="20" viewBox="0 0 28 28"><polygon points="14,1 26,7.5 26,20.5 14,27 2,20.5 2,7.5" fill="none" stroke="currentColor" stroke-width="2.8"/></svg>
+                    <span class="res-tab-label">City</span>
+                </div>
+                <div class="res-tab-bar"></div>
+            </div>
+            <div class="res-tab" data-idx="2">
+                <div class="res-tab-top">
+                    <svg class="res-hex" width="14" height="14" viewBox="0 0 28 28"><polygon points="14,1 26,7.5 26,20.5 14,27 2,20.5 2,7.5" fill="none" stroke="currentColor" stroke-width="4"/></svg>
+                    <span class="res-tab-label">Neighborhood</span>
+                </div>
+                <div class="res-tab-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="map-wrap">
+        <div id="map"></div>
+        <div id="metaball-gl"></div>
+        <canvas id="number-canvas"></canvas>
+    </div>
+
+    <div id="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+</div>
+
+<script>
+    mapboxgl.accessToken = 'pk.eyJ1Ijoia2FpbWFyc2hsYW5kIiwiYSI6ImNqb205dDhvczA0dDEzcm81Y2ljdnY0dWMifQ.HK_10izvkRBM8bQsXEc0PQ';
+
+    // ─── Zoom to show the center res-4 hex ──────────────────────
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/kaimarshland/cmmo2g00p003g01rn1eth2lyp',
+        center: [-72.35, 44.15],
+        zoom: 11,
+        pitch: 0,
+        bearing: 0
+    });
+
+    // Color ramp: light purple → deep purple
+    const COLORS = [
+        [230, 215, 255],
+        [206, 183, 240],
+        [182, 151, 225],
+        [158, 119, 210],
+        [134, 87, 195],
+        [110, 55, 180],
+        [112, 112, 233]
+    ];
+
+    // H3 average hex area in km² per resolution
+    const H3_AREAS = {
+        4: 1107, 5: 252.9, 6: 36.13, 7: 5.161, 8: 0.7373, 9: 0.1053,
+        10: 0.01505, 11: 0.00215, 12: 0.000307
+    };
+
+    function rgbStr(c) { return `rgb(${c[0]},${c[1]},${c[2]})`; }
+
+    function getColor(count, maxCount) {
+        if (count === 0) return 'rgb(230,230,230)';
+        const t = Math.min(count / maxCount, 1);
+        const idx = t * (COLORS.length - 1);
+        const lo = Math.floor(idx);
+        const hi = Math.min(lo + 1, COLORS.length - 1);
+        const f = idx - lo;
+        return rgbStr([
+            Math.round(COLORS[lo][0] + (COLORS[hi][0] - COLORS[lo][0]) * f),
+            Math.round(COLORS[lo][1] + (COLORS[hi][1] - COLORS[lo][1]) * f),
+            Math.round(COLORS[lo][2] + (COLORS[hi][2] - COLORS[lo][2]) * f)
+        ]);
+    }
+
+    function buildLegend(maxCount) {
+        // legend removed
+    }
+
+    function buildDistribution(values, maxCount) {
+        const bucketCount = 5;
+        const step = Math.ceil(maxCount / bucketCount);
+        const buckets = [];
+        for (let i = 0; i < bucketCount; i++) {
+            const lo = i * step + 1;
+            const hi = Math.min((i + 1) * step, maxCount);
+            const count = values.filter(v => v >= lo && v <= hi).length;
+            buckets.push({ label: lo === hi ? `${lo}` : `${lo}–${hi}`, count });
+        }
+        const maxBucket = Math.max(...buckets.map(b => b.count), 1);
+        const container = document.getElementById('distribution');
+        if (!container) return;
+        container.innerHTML = buckets.map(b => `
+            <div class="dist-row">
+                <span class="dist-label">${b.label}</span>
+                <div class="dist-bar-bg"><div class="dist-bar-fill" style="width:${(b.count / maxBucket * 100).toFixed(1)}%"></div></div>
+                <span class="dist-count">${b.count}</span>
+            </div>
+        `).join('');
+    }
+
+    // ─── Center hex boundary ────────────────────────────────────────────────────
+    const BCENTER = [-72.518160, 44.204957];
+    const RES_STOPS = [6, 7, 9]; // the 3 H3 resolution levels
+
+    let _centerCell6 = null;
+    function getCenterCell6() {
+        if (!_centerCell6) _centerCell6 = h3.latLngToCell(BCENTER[1], BCENTER[0], 6);
+        return _centerCell6;
+    }
+
+    // isWithinBoundary: is this lng/lat inside the center res-6 hex?
+    function isWithinBoundary(lng, lat) {
+        return h3.latLngToCell(lat, lng, 6) === getCenterCell6();
+    }
+
+    function isWithinHexBoundary(lng, lat) {
+        return isWithinBoundary(lng, lat);
+    }
+
+    function h3ToGeoJSONPolygon(h3Index) {
+        const boundary = h3.cellToBoundary(h3Index);
+        const coords = boundary.map(([lat, lng]) => [lng, lat]);
+        coords.push(coords[0]);
+        return coords;
+    }
+
+    const resCache = {};
+
+    // ─── computeRes: scoped to center res-6 hex and its children ────────────
+    function computeRes(resolution) {
+        if (resCache[resolution]) return resCache[resolution];
+
+        const center6 = getCenterCell6();
+        let filteredIndexes;
+        if (resolution <= 6) {
+            filteredIndexes = [center6];
+        } else {
+            filteredIndexes = h3.cellToChildren(center6, resolution);
+        }
+
+        const counts = {};
+        for (const idx of filteredIndexes) counts[idx] = 0;
+
+        if (polesData) {
+            for (const feature of polesData.features) {
+                const [lng, lat] = feature.geometry.coordinates;
+                if (!isWithinBoundary(lng, lat)) continue;
+                const h3Index = h3.latLngToCell(lat, lng, Math.max(resolution, 6));
+                if (h3Index in counts) counts[h3Index]++;
+            }
+        }
+
+        const maxCount = Math.max(...Object.values(counts), 1);
+        const geojson = {
+            type: 'FeatureCollection',
+            features: filteredIndexes.map(idx => ({
+                type: 'Feature',
+                properties: { h3: idx, count: counts[idx], color: getColor(counts[idx], maxCount) },
+                geometry: { type: 'Polygon', coordinates: [h3ToGeoJSONPolygon(idx)] }
+            }))
+        };
+
+        resCache[resolution] = { filteredIndexes, counts, maxCount, geojson };
+        return resCache[resolution];
+    }
+
+
+    // Build centroid GeoJSON for count bubbles at a given resolution
+    function getCenterCellForRes(resolution) {
+        if (resolution === 6) return getCenterCell6();
+        if (resolution === 7) return h3.latLngToCell(BCENTER[1], BCENTER[0], 7);
+        return h3.latLngToCell(44.205342, -72.513017, 9);
+    }
+
+    function buildCountBubbles(resolution) {
+        const { filteredIndexes } = computeRes(resolution);
+        const centerCell = getCenterCellForRes(resolution);
+        const dotCounts = redDotCounts[resolution] || {};
+        const maxCount = Math.max(...Object.values(dotCounts), 1);
+        return {
+            type: 'FeatureCollection',
+            features: filteredIndexes.map(idx => {
+                const center = h3.cellToLatLng(idx);
+                const count = dotCounts[idx] || 0;
+                return {
+                    type: 'Feature',
+                    properties: { count, maxCount, isCenter: idx === centerCell ? 1 : 0 },
+                    geometry: { type: 'Point', coordinates: [center[1], center[0]] }
+                };
+            }).filter(f => f.properties.count > 0)
+        };
+    }
+
+    // Build a mask GeoJSON: world polygon with a hole cut for the single center hex at the active resolution
+    function buildCenterMask(resolution) {
+        const worldOuter = [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]];
+
+        // Each level: hole is just the one center hex at that resolution
+        let holeCell;
+        if (resolution === 6) {
+            holeCell = getCenterCell6();
+        } else if (resolution === 7) {
+            holeCell = h3.latLngToCell(BCENTER[1], BCENTER[0], 7);
+        } else {
+            // res 9: the hex containing the zoom target
+            holeCell = h3.latLngToCell(44.205342, -72.513017, 9);
+        }
+
+        const boundary = h3.cellToBoundary(holeCell).map(([lat, lng]) => [lng, lat]);
+        boundary.push(boundary[0]);
+
+        return {
+            type: 'Feature',
+            geometry: {
+                type: 'Polygon',
+                coordinates: [worldOuter, boundary]
+            }
+        };
+    }
+
+    let _prevResIdx = 0;
+    let _bubbleAnimFrame = null;
+
+    // ─── Three.js GLSL Metaball renderer ────────────────────────────────────────
+    const MAX_SPHERES = 32;
+    const metaballContainer = document.getElementById('metaball-gl');
+    let _mbRenderer = null, _mbScene = null, _mbCamera = null, _mbMaterial = null;
+
+    function initMetaballGL() {
+        if (_mbRenderer) return;
+        const dpr = window.devicePixelRatio || 1;
+        const rect = document.getElementById('map').getBoundingClientRect();
+
+        _mbRenderer = new THREE.WebGLRenderer({ alpha: true, premultipliedAlpha: false });
+        _mbRenderer.setPixelRatio(dpr);
+        _mbRenderer.setSize(rect.width, rect.height);
+        _mbRenderer.domElement.style.width = '100%';
+        _mbRenderer.domElement.style.height = '100%';
+        metaballContainer.appendChild(_mbRenderer.domElement);
+
+        _mbCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        _mbScene = new THREE.Scene();
+
+        _mbMaterial = new THREE.ShaderMaterial({
+            transparent: true,
+            depthTest: false,
+            uniforms: {
+                uSpheres: { value: new Array(MAX_SPHERES).fill(null).map(() => new THREE.Vector3()) },
+                uColors:  { value: new Array(MAX_SPHERES).fill(null).map(() => new THREE.Vector3()) },
+                uCount:   { value: 0 },
+                uResolution: { value: new THREE.Vector2(rect.width * dpr, rect.height * dpr) },
+                uDPR: { value: dpr }
+            },
+            vertexShader: `
+                void main() {
+                    gl_Position = vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                precision highp float;
+                uniform vec3  uSpheres[${MAX_SPHERES}];
+                uniform vec3  uColors[${MAX_SPHERES}];
+                uniform int   uCount;
+                uniform vec2  uResolution;
+                uniform float uDPR;
+
+                void main() {
+                    vec2 px = gl_FragCoord.xy;
+                    if (uCount == 0) { discard; return; }
+
+                    // k controls fusion width — smaller = wider neck, earlier merge
+                    float r0 = max(uSpheres[0].z, 1.0);
+                    float k  = 2.2 / r0;
+
+                    // Exponential field: unified SDF + color weighting
+                    float sumW = 0.0;
+                    vec3  col  = vec3(0.0);
+
+                    for (int i = 0; i < ${MAX_SPHERES}; i++) {
+                        if (i >= uCount) break;
+                        float di = length(px - uSpheres[i].xy) - uSpheres[i].z;
+                        float w  = exp(-k * di);
+                        sumW    += w;
+                        col     += uColors[i] * w;
+                    }
+
+                    // Recover smooth SDF from field
+                    float d = -log(max(sumW, 1e-15)) / k;
+
+                    float edge = 1.2 * uDPR;
+                    if (d > edge) discard;
+
+                    col /= sumW;
+
+                    // Smooth alpha falloff at edges
+                    float alpha = smoothstep(edge, -edge * 1.5, d) * 0.96;
+
+                    // White stroke at blob boundary
+                    float strokeW = 1.8 * uDPR;
+                    if (d > -strokeW && d < edge) {
+                        float strokeT = smoothstep(-strokeW, edge, d);
+                        col = mix(col, vec3(1.0), strokeT * 0.35);
+                    }
+
+                    gl_FragColor = vec4(col, alpha);
+                }
+            `
+        });
+
+        const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), _mbMaterial);
+        _mbScene.add(quad);
+    }
+
+    function resizeMetaballGL() {
+        const rect = document.getElementById('map').getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        _mbRenderer.setSize(rect.width, rect.height);
+        _mbMaterial.uniforms.uResolution.value.set(rect.width * dpr, rect.height * dpr);
+        _mbMaterial.uniforms.uDPR.value = dpr;
+    }
+
+    function showMetaball() {
+        initMetaballGL();
+        resizeMetaballGL();
+        // Clear WebGL framebuffer before showing to prevent old-frame flash
+        _mbMaterial.uniforms.uCount.value = 0;
+        _mbRenderer.render(_mbScene, _mbCamera);
+        metaballContainer.style.transition = '';
+        metaballContainer.style.opacity = '1';
+        metaballContainer.style.display = 'block';
+    }
+    function hideMetaball() {
+        metaballContainer.style.display = 'none';
+    }
+
+    // ─── 2D Number Balls Canvas ─────────────────────────────────────────────────
+    const numberCanvas = document.getElementById('number-canvas');
+    const numCtx = numberCanvas.getContext('2d');
+    let _currentBubbleFeatures = null;
+    let _isMetaballAnimating = false;
+
+    function resizeNumberCanvas() {
+        const rect = document.getElementById('map').getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        numberCanvas.width = rect.width * dpr;
+        numberCanvas.height = rect.height * dpr;
+    }
+
+    function getBubbleColorCSS(count, maxCount) {
+        const ratio = Math.min(count / Math.max(maxCount, 1), 1);
+        if (ratio < 0.4) return `rgb(255,${Math.round(215 - ratio/0.4*50)},0)`;
+        if (ratio < 0.7) return `rgb(255,${Math.round(165 - (ratio-0.4)/0.3*96)},${Math.round((ratio-0.4)/0.3*20)})`;
+        return `rgb(${Math.round(255 - (ratio-0.7)/0.3*35)},${Math.round(69 - (ratio-0.7)/0.3*69)},0)`;
+    }
+
+    function drawNumberBalls(features) {
+        if (!features || !features.length) {
+            numCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+            return;
+        }
+        const dpr = window.devicePixelRatio || 1;
+        resizeNumberCanvas();
+        numCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+
+        const globalMax = Math.max(...features.map(f => f.properties.maxCount), 1);
+
+        for (const f of features) {
+            const [lng, lat] = f.geometry.coordinates;
+            const px = map.project([lng, lat]);
+            const x = px.x * dpr;
+            const y = px.y * dpr;
+            const ratio = f.properties.count / globalMax;
+            const r = (52 + ratio * 28) * dpr;
+            const isCenter = f.properties.isCenter === 1;
+            const alpha = isCenter ? 0.95 : 0.75;
+
+            // Circle
+            numCtx.save();
+            numCtx.globalAlpha = alpha;
+            numCtx.beginPath();
+            numCtx.arc(x, y, r, 0, Math.PI * 2);
+            numCtx.fillStyle = getBubbleColorCSS(f.properties.count, globalMax);
+            numCtx.fill();
+            numCtx.strokeStyle = '#ffffff';
+            numCtx.lineWidth = 2 * dpr;
+            numCtx.globalAlpha = isCenter ? 1 : 0.75;
+            numCtx.stroke();
+
+            // "Customers Impacted" label inside bubble (two rows, above number)
+            const labelFontSize = Math.round(16 * dpr);
+            numCtx.fillStyle = '#ffffff';
+            numCtx.font = `600 ${labelFontSize}px "PP Neue Montreal", -apple-system, sans-serif`;
+            numCtx.textAlign = 'center';
+            numCtx.textBaseline = 'middle';
+            numCtx.globalAlpha = isCenter ? 0.85 : 0.65;
+            const lineGap = labelFontSize * 1.2;
+            numCtx.fillText('Customers', x, y - r * 0.25 - lineGap * 0.5);
+            numCtx.fillText('Impacted', x, y - r * 0.25 + lineGap * 0.5);
+
+            // Number label (mono font, below the text)
+            const fontSize = Math.round((28 + ratio * 8) * dpr);
+            numCtx.fillStyle = '#ffffff';
+            numCtx.font = `bold ${fontSize}px "PP Neue Montreal Mono", monospace`;
+            numCtx.textAlign = 'center';
+            numCtx.textBaseline = 'middle';
+            numCtx.globalAlpha = isCenter ? 1 : 0.75;
+            numCtx.fillText(String(f.properties.count), x, y + r * 0.38);
+            numCtx.restore();
+        }
+    }
+
+    function clearNumberBalls() {
+        numCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+    }
+
+    function getBubbleColorVec3(count, maxCount) {
+        const ratio = Math.min(count / Math.max(maxCount, 1), 1);
+        let r, g, b;
+        if (ratio < 0.4) {
+            r = 1.0; g = (215 - ratio / 0.4 * 50) / 255; b = 0;
+        } else if (ratio < 0.7) {
+            r = 1.0; g = (165 - (ratio - 0.4) / 0.3 * 96) / 255; b = ((ratio - 0.4) / 0.3 * 20) / 255;
+        } else {
+            r = (255 - (ratio - 0.7) / 0.3 * 35) / 255; g = (69 - (ratio - 0.7) / 0.3 * 69) / 255; b = 0;
+        }
+        return new THREE.Vector3(r, g, b);
+    }
+
+    function renderMetaballs(sphereData) {
+        // sphereData: array of { x, y, r, count, globalMax } in CSS pixels
+        const dpr = window.devicePixelRatio || 1;
+        const mapEl = document.getElementById('map');
+        const H = mapEl.clientHeight;
+        const n = Math.min(sphereData.length, MAX_SPHERES);
+
+        const uSpheres = _mbMaterial.uniforms.uSpheres.value;
+        const uColors = _mbMaterial.uniforms.uColors.value;
+
+        for (let i = 0; i < n; i++) {
+            const s = sphereData[i];
+            // Flip Y for WebGL (origin bottom-left)
+            uSpheres[i].set(s.x * dpr, (H - s.y) * dpr, s.r * dpr);
+            const cv = getBubbleColorVec3(s.count, s.globalMax);
+            uColors[i].copy(cv);
+        }
+        // Zero out unused slots
+        for (let i = n; i < MAX_SPHERES; i++) {
+            uSpheres[i].set(0, 0, 0);
+            uColors[i].set(0, 0, 0);
+        }
+        _mbMaterial.uniforms.uCount.value = n;
+        _mbRenderer.render(_mbScene, _mbCamera);
+    }
+
+    // Animate bubbles: children start at parent centroid, move to their own centroid (SPLIT)
+    // Pure 2D canvas animation — no WebGL, no crossfade, no flicker
+    function animateBubbleSplit(fromRes, toRes) {
+        if (_bubbleAnimFrame) { cancelAnimationFrame(_bubbleAnimFrame); _bubbleAnimFrame = null; }
+        hideMetaball();
+        _currentBubbleFeatures = null;
+
+        const features = buildCountBubbles(toRes).features;
+        if (!features.length) {
+            _currentBubbleFeatures = features;
+            drawNumberBalls(features);
+            return;
+        }
+
+        const startPos = features.map(f => {
+            const [lng, lat] = f.geometry.coordinates;
+            const pc = h3.cellToLatLng(h3.cellToParent(h3.latLngToCell(lat, lng, toRes), fromRes));
+            return [pc[1], pc[0]];
+        });
+        const endPos = features.map(f => f.geometry.coordinates);
+        const globalMax = Math.max(...features.map(f => f.properties.maxCount), 1);
+        const dpr = window.devicePixelRatio || 1;
+
+        _isMetaballAnimating = true;
+        const duration = (fromRes === 6) ? 600 : 1200, startT = performance.now();
+
+        function animate(now) {
+            const t = Math.min((now - startT) / duration, 1);
+            const ease = 1 - Math.pow(1 - t, 3);
+
+            resizeNumberCanvas();
+            numCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+
+            for (let i = 0; i < features.length; i++) {
+                const lng = startPos[i][0] + (endPos[i][0] - startPos[i][0]) * ease;
+                const lat = startPos[i][1] + (endPos[i][1] - startPos[i][1]) * ease;
+                const px = map.project([lng, lat]);
+                const x = px.x * dpr, y = px.y * dpr;
+                const ratio = features[i].properties.count / globalMax;
+                const r = (52 + ratio * 28) * dpr;
+                const isCenter = features[i].properties.isCenter === 1;
+
+                numCtx.save();
+                numCtx.globalAlpha = (isCenter ? 0.95 : 0.55) * ease;
+                numCtx.beginPath();
+                numCtx.arc(x, y, r, 0, Math.PI * 2);
+                numCtx.fillStyle = getBubbleColorCSS(features[i].properties.count, globalMax);
+                numCtx.fill();
+                numCtx.strokeStyle = '#ffffff';
+                numCtx.lineWidth = 2 * dpr;
+                numCtx.stroke();
+                if (t > 0.5) {
+                    const textAlpha = (isCenter ? 1 : 0.55) * ((t - 0.5) * 2);
+                    // "Customers Impacted" label (two rows)
+                    const lfs = Math.round(16 * dpr);
+                    numCtx.globalAlpha = textAlpha * (isCenter ? 0.85 : 0.82);
+                    numCtx.font = `600 ${lfs}px "PP Neue Montreal", -apple-system, sans-serif`;
+                    numCtx.fillStyle = '#ffffff';
+                    numCtx.textAlign = 'center';
+                    numCtx.textBaseline = 'middle';
+                    const lg1 = lfs * 1.2;
+                    numCtx.fillText('Customers', x, y - r * 0.25 - lg1 * 0.5);
+                    numCtx.fillText('Impacted', x, y - r * 0.25 + lg1 * 0.5);
+                    // Number
+                    numCtx.globalAlpha = textAlpha;
+                    const fs = Math.round((28 + ratio * 8) * dpr);
+                    numCtx.font = `bold ${fs}px "PP Neue Montreal Mono", monospace`;
+                    numCtx.fillText(String(features[i].properties.count), x, y + r * 0.38);
+                }
+                numCtx.restore();
+            }
+
+            if (t < 1) {
+                _bubbleAnimFrame = requestAnimationFrame(animate);
+            } else {
+                _isMetaballAnimating = false;
+                _currentBubbleFeatures = features;
+                drawNumberBalls(features);
+                _bubbleAnimFrame = null;
+            }
+        }
+        _bubbleAnimFrame = requestAnimationFrame(animate);
+    }
+
+    // Animate bubbles merging: children move to parent centroid (reverse of split)
+    // Pure 2D canvas animation
+    function animateBubbleMerge(fromRes, toRes) {
+        if (_bubbleAnimFrame) { cancelAnimationFrame(_bubbleAnimFrame); _bubbleAnimFrame = null; }
+        hideMetaball();
+        _currentBubbleFeatures = null;
+
+        const features = buildCountBubbles(fromRes).features;
+        const targetFeatures = buildCountBubbles(toRes).features;
+
+        if (!features.length) {
+            _currentBubbleFeatures = targetFeatures;
+            drawNumberBalls(targetFeatures);
+            return;
+        }
+
+        const startPos = features.map(f => f.geometry.coordinates);
+        const endPos = features.map(f => {
+            const [lng, lat] = f.geometry.coordinates;
+            const pc = h3.cellToLatLng(h3.cellToParent(h3.latLngToCell(lat, lng, fromRes), toRes));
+            return [pc[1], pc[0]];
+        });
+        const globalMax = Math.max(...features.map(f => f.properties.maxCount), 1);
+        const dpr = window.devicePixelRatio || 1;
+
+        _isMetaballAnimating = true;
+        const duration = 1000, startT = performance.now();
+
+        // Pre-compute target ball info for early fade-in
+        const targetGlobalMax = targetFeatures.length ? Math.max(...targetFeatures.map(f => f.properties.maxCount), 1) : 1;
+
+        function animate(now) {
+            const t = Math.min((now - startT) / duration, 1);
+            const ease = 1 - Math.pow(1 - t, 3);
+
+            resizeNumberCanvas();
+            numCtx.clearRect(0, 0, numberCanvas.width, numberCanvas.height);
+
+            // Draw target (parent) balls fading in from t=0.3
+            if (t > 0.3 && targetFeatures.length) {
+                const fadeIn = Math.min((t - 0.3) / 0.7, 1);
+                for (const f of targetFeatures) {
+                    const [lng, lat] = f.geometry.coordinates;
+                    const px = map.project([lng, lat]);
+                    const x = px.x * dpr, y = px.y * dpr;
+                    const ratio = f.properties.count / targetGlobalMax;
+                    const r = (52 + ratio * 28) * dpr;
+                    const isCenter = f.properties.isCenter === 1;
+
+                    numCtx.save();
+                    numCtx.globalAlpha = (isCenter ? 0.95 : 0.55) * fadeIn;
+                    numCtx.beginPath();
+                    numCtx.arc(x, y, r, 0, Math.PI * 2);
+                    numCtx.fillStyle = getBubbleColorCSS(f.properties.count, targetGlobalMax);
+                    numCtx.fill();
+                    numCtx.strokeStyle = '#ffffff';
+                    numCtx.lineWidth = 2 * dpr;
+                    numCtx.stroke();
+                    // Text + number appear in second half of fade-in
+                    if (fadeIn > 0.5) {
+                        const textAlpha = (isCenter ? 1 : 0.55) * ((fadeIn - 0.5) * 2);
+                        const lfs = Math.round(16 * dpr);
+                        numCtx.globalAlpha = textAlpha * (isCenter ? 0.85 : 0.82);
+                        numCtx.font = `600 ${lfs}px "PP Neue Montreal", -apple-system, sans-serif`;
+                        numCtx.fillStyle = '#ffffff';
+                        numCtx.textAlign = 'center';
+                        numCtx.textBaseline = 'middle';
+                        const lg2 = lfs * 1.2;
+                        numCtx.fillText('Customers', x, y - r * 0.25 - lg2 * 0.5);
+                        numCtx.fillText('Impacted', x, y - r * 0.25 + lg2 * 0.5);
+                        numCtx.globalAlpha = textAlpha;
+                        const fs = Math.round((28 + ratio * 8) * dpr);
+                        numCtx.font = `bold ${fs}px "PP Neue Montreal Mono", monospace`;
+                        numCtx.fillText(String(f.properties.count), x, y + r * 0.38);
+                    }
+                    numCtx.restore();
+                }
+            }
+
+            // Draw merging children fading out on top
+            for (let i = 0; i < features.length; i++) {
+                const lng = startPos[i][0] + (endPos[i][0] - startPos[i][0]) * ease;
+                const lat = startPos[i][1] + (endPos[i][1] - startPos[i][1]) * ease;
+                const px = map.project([lng, lat]);
+                const x = px.x * dpr, y = px.y * dpr;
+                const ratio = features[i].properties.count / globalMax;
+                const r = (52 + ratio * 28) * dpr;
+                const isCenter = features[i].properties.isCenter === 1;
+
+                numCtx.save();
+                numCtx.globalAlpha = (isCenter ? 0.95 : 0.55) * (1 - ease);
+                numCtx.beginPath();
+                numCtx.arc(x, y, r, 0, Math.PI * 2);
+                numCtx.fillStyle = getBubbleColorCSS(features[i].properties.count, globalMax);
+                numCtx.fill();
+                numCtx.strokeStyle = '#ffffff';
+                numCtx.lineWidth = 2 * dpr;
+                numCtx.stroke();
+                if (t < 0.3) {
+                    const textAlpha = (isCenter ? 1 : 0.55) * (1 - t / 0.3);
+                    const lfs = Math.round(16 * dpr);
+                    numCtx.globalAlpha = textAlpha * (isCenter ? 0.85 : 0.82);
+                    numCtx.font = `600 ${lfs}px "PP Neue Montreal", -apple-system, sans-serif`;
+                    numCtx.fillStyle = '#ffffff';
+                    numCtx.textAlign = 'center';
+                    numCtx.textBaseline = 'middle';
+                    const lg3 = lfs * 1.2;
+                    numCtx.fillText('Customers', x, y - r * 0.25 - lg3 * 0.5);
+                    numCtx.fillText('Impacted', x, y - r * 0.25 + lg3 * 0.5);
+                    numCtx.globalAlpha = textAlpha;
+                    const fs = Math.round((28 + ratio * 8) * dpr);
+                    numCtx.font = `bold ${fs}px "PP Neue Montreal Mono", monospace`;
+                    numCtx.fillText(String(features[i].properties.count), x, y + r * 0.38);
+                }
+                numCtx.restore();
+            }
+
+            if (t < 1) {
+                _bubbleAnimFrame = requestAnimationFrame(animate);
+            } else {
+                _isMetaballAnimating = false;
+                _currentBubbleFeatures = targetFeatures;
+                drawNumberBalls(targetFeatures);
+                _bubbleAnimFrame = null;
+            }
+        }
+        _bubbleAnimFrame = requestAnimationFrame(animate);
+    }
+
+    // Animate red dots flying out from their parent res-7 bubble positions
+    let _redDotAnimFrame = null;
+    function animateRedDotsFromBubbles(parentRes) {
+        if (_redDotAnimFrame) cancelAnimationFrame(_redDotAnimFrame);
+        if (!redDotFeatures.length) return;
+
+        const n = redDotFeatures.length;
+        const sx = new Float64Array(n), sy = new Float64Array(n);
+        const dx = new Float64Array(n), dy = new Float64Array(n);
+        const animFeatures = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const [lng, lat] = redDotFeatures[i].geometry.coordinates;
+            const parentCell = h3.cellToParent(h3.latLngToCell(lat, lng, 9), parentRes);
+            const pc = h3.cellToLatLng(parentCell);
+            sx[i] = pc[1]; sy[i] = pc[0];
+            dx[i] = lng - pc[1]; dy[i] = lat - pc[0];
+            animFeatures[i] = {
+                type: 'Feature',
+                properties: redDotFeatures[i].properties,
+                geometry: { type: 'Point', coordinates: [sx[i], sy[i]] }
+            };
+        }
+        const animData = { type: 'FeatureCollection', features: animFeatures };
+
+        // Show circles now, icons after animation (symbol relayout each frame is slow)
+        map.setLayoutProperty('random-poles-circle', 'visibility', 'visible');
+        if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'none');
+
+        const duration = 400;
+        const startT = performance.now();
+
+        function animate(now) {
+            const progress = Math.min((now - startT) / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3);
+            for (let i = 0; i < n; i++) {
+                const c = animFeatures[i].geometry.coordinates;
+                c[0] = sx[i] + dx[i] * ease;
+                c[1] = sy[i] + dy[i] * ease;
+            }
+            map.getSource('random-poles').setData(animData);
+            if (progress < 1) {
+                _redDotAnimFrame = requestAnimationFrame(animate);
+            } else {
+                if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'visible');
+                _redDotAnimFrame = null;
+            }
+        }
+        _redDotAnimFrame = requestAnimationFrame(animate);
+    }
+
+    // Animate red dots converging back to parent bubble positions, then call onDone
+    function animateRedDotsToBubbles(targetRes, onDone) {
+        if (_redDotAnimFrame) cancelAnimationFrame(_redDotAnimFrame);
+        if (!redDotFeatures.length) { if (onDone) onDone(); return; }
+
+        const n = redDotFeatures.length;
+        const sx = new Float64Array(n), sy = new Float64Array(n);
+        const dx = new Float64Array(n), dy = new Float64Array(n);
+        const animFeatures = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const [lng, lat] = redDotFeatures[i].geometry.coordinates;
+            const parentCell = h3.cellToParent(h3.latLngToCell(lat, lng, 9), targetRes);
+            const pc = h3.cellToLatLng(parentCell);
+            sx[i] = lng; sy[i] = lat;
+            dx[i] = pc[1] - lng; dy[i] = pc[0] - lat;
+            animFeatures[i] = {
+                type: 'Feature',
+                properties: redDotFeatures[i].properties,
+                geometry: { type: 'Point', coordinates: [lng, lat] }
+            };
+        }
+        const animData = { type: 'FeatureCollection', features: animFeatures };
+
+        if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'none');
+
+        const duration = 600;
+        const startT = performance.now();
+
+        function animate(now) {
+            const progress = Math.min((now - startT) / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3);
+            for (let i = 0; i < n; i++) {
+                const c = animFeatures[i].geometry.coordinates;
+                c[0] = sx[i] + dx[i] * ease;
+                c[1] = sy[i] + dy[i] * ease;
+            }
+            map.getSource('random-poles').setData(animData);
+            if (progress < 1) {
+                _redDotAnimFrame = requestAnimationFrame(animate);
+            } else {
+                map.setLayoutProperty('random-poles-circle', 'visibility', 'none');
+                if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', 'none');
+                map.getSource('random-poles').setData({ type: 'FeatureCollection', features: redDotFeatures });
+                _redDotAnimFrame = null;
+                if (onDone) onDone();
+            }
+        }
+        _redDotAnimFrame = requestAnimationFrame(animate);
+    }
+
+    let _skipMaskUpdate = false;
+
+    // ─── renderInterpolated: show the selected resolution, hide others
+    function renderInterpolated(idx) {
+        if (!polesData || !map.getSource('hex-grid-6')) return;
+        const activeRes = RES_STOPS[idx];
+        const prevRes = RES_STOPS[_prevResIdx];
+
+        RES_STOPS.forEach(res => {
+            const on = res === activeRes ? 1 : 0;
+            if (prevRes === 6 && activeRes === 7 && res === 6) {
+                // For 6→7: hide res-6 grid instantly (no fade, no flash)
+                map.setPaintProperty(`hex-fill-${res}`, 'fill-opacity-transition', { duration: 0 });
+                map.setPaintProperty(`hex-outline-${res}`, 'line-opacity-transition', { duration: 0 });
+                map.setPaintProperty(`hex-fill-${res}`, 'fill-opacity', 0);
+                map.setPaintProperty(`hex-outline-${res}`, 'line-opacity', 0);
+            } else {
+                // Restore normal transition for fading in
+                map.setPaintProperty(`hex-fill-${res}`, 'fill-opacity-transition', { duration: 400 });
+                map.setPaintProperty(`hex-outline-${res}`, 'line-opacity-transition', { duration: 400 });
+                map.setPaintProperty(`hex-fill-${res}`, 'fill-opacity', on * 0.4);
+                map.setPaintProperty(`hex-outline-${res}`, 'line-opacity', on * 0.9);
+            }
+        });
+
+        buildLegend(computeRes(activeRes).maxCount);
+
+        // Zoom config
+        const ZOOM_LEVELS = { 6: 12.2, 7: 12.6, 9: 16.1 };
+        const PITCH_LEVELS = { 6: 0, 7: 20, 9: 45 };
+        const BEARING_LEVELS = { 6: 0, 7: -10, 9: -20 };
+        const RES_CENTERS = { 6: BCENTER, 7: [-72.517, 44.2015], 9: [-72.513017, 44.205342] };
+
+        function doFlyTo() {
+            map.setMaxBounds(null);
+            map.flyTo({
+                center: RES_CENTERS[activeRes] || BCENTER,
+                zoom: ZOOM_LEVELS[activeRes] || 12,
+                pitch: PITCH_LEVELS[activeRes] || 0,
+                bearing: BEARING_LEVELS[activeRes] || 0,
+                speed: (prevRes === 6 && activeRes === 7) ? 0.25 : 0.7,
+                curve: (prevRes === 6 && activeRes === 7) ? 1.2 : 1.8,
+                essential: true
+            });
+            map.once('moveend', () => {
+                map.setMaxBounds([[-72.59, 44.14], [-72.45, 44.27]]);
+            });
+        }
+
+        // Animate bubbles: split when zooming in, merge when zooming out
+        // At res 9, hide count bubbles entirely — red dots take over
+        if (activeRes !== prevRes) {
+            if (prevRes === 6 && activeRes === 7) {
+                // 6→7 sequenced:
+                // 1) Keep res-6 white mask, fade in res-7 grid inside center hex
+                // 2) Zoom in
+                // 3) Update mask to res-7 (show only center res-7 hex)
+                // 4) Number bubbles appear
+                // Keep the res-6 bubble visible during grid fade and fly
+                if (!_currentBubbleFeatures) {
+                    _currentBubbleFeatures = buildCountBubbles(6).features;
+                    drawNumberBalls(_currentBubbleFeatures);
+                }
+                _skipMaskUpdate = true; // prevent auto mask update below
+
+                // Grid fade + bubble split + mask update all at the same time
+                if (map.getSource('center-mask')) {
+                    map.getSource('center-mask').setData(buildCenterMask(7));
+                }
+                if (map.getSource('center-hex-outline')) {
+                    const centerCell = getCenterCellForRes(7);
+                    map.getSource('center-hex-outline').setData({
+                        type: 'FeatureCollection',
+                        features: [{
+                            type: 'Feature',
+                            properties: {},
+                            geometry: { type: 'Polygon', coordinates: [h3ToGeoJSONPolygon(centerCell)] }
+                        }]
+                    });
+                }
+                animateBubbleSplit(prevRes, activeRes);
+
+                // After split finishes, fly
+                const splitDur = (prevRes === 6) ? 350 : 1200;
+                setTimeout(() => {
+                    doFlyTo();
+                }, splitDur);
+            } else if (activeRes === 9) {
+                clearNumberBalls();
+                _currentBubbleFeatures = null;
+                animateRedDotsFromBubbles(prevRes);
+                doFlyTo();
+            } else if (prevRes === 9) {
+                animateRedDotsToBubbles(activeRes, () => {
+                    _currentBubbleFeatures = buildCountBubbles(activeRes).features;
+                    drawNumberBalls(_currentBubbleFeatures);
+                });
+                doFlyTo();
+            } else if (activeRes > prevRes) {
+                clearNumberBalls();
+                _currentBubbleFeatures = null;
+                setTimeout(() => animateBubbleSplit(prevRes, activeRes), 200);
+                doFlyTo();
+            } else {
+                clearNumberBalls();
+                _currentBubbleFeatures = null;
+                setTimeout(() => animateBubbleMerge(prevRes, activeRes), 200);
+                doFlyTo();
+            }
+        } else {
+            if (activeRes === 9) {
+                clearNumberBalls();
+                _currentBubbleFeatures = null;
+            } else {
+                _currentBubbleFeatures = buildCountBubbles(activeRes).features;
+                drawNumberBalls(_currentBubbleFeatures);
+            }
+            doFlyTo();
+        }
+
+        _prevResIdx = idx;
+
+        // Update center mask and center hex outline (skipped for 6→7, handled in sequence above)
+        if (!_skipMaskUpdate) {
+            if (map.getSource('center-mask')) {
+                map.getSource('center-mask').setData(buildCenterMask(activeRes));
+            }
+            if (map.getSource('center-hex-outline')) {
+                const centerCell = getCenterCellForRes(activeRes);
+                map.getSource('center-hex-outline').setData({
+                    type: 'FeatureCollection',
+                    features: [{
+                        type: 'Feature',
+                        properties: {},
+                        geometry: { type: 'Polygon', coordinates: [h3ToGeoJSONPolygon(centerCell)] }
+                    }]
+                });
+            }
+        }
+        _skipMaskUpdate = false;
+
+        // Hide neighbor hexagons at all levels
+        if (map.getLayer('hex-neighbors-fill')) {
+            map.setLayoutProperty('hex-neighbors-fill', 'visibility', 'none');
+            map.setLayoutProperty('hex-neighbors-outline', 'visibility', 'none');
+        }
+
+        // Hide layers per resolution level
+        // Roads: hidden at res 6
+        const styleLayers2 = map.getStyle().layers;
+        for (const layer of styleLayers2) {
+            if (layer.type === 'symbol') continue; // keep labels always hidden
+            const id = layer.id.toLowerCase();
+            if (id.includes('road') || id.includes('bridge') || id.includes('tunnel')) {
+                map.setLayoutProperty(layer.id, 'visibility', activeRes === 6 ? 'none' : 'visible');
+            }
+        }
+        // Buildings: hidden at res 6
+        if (map.getLayer('buildings-fill')) {
+            map.setLayoutProperty('buildings-fill', 'visibility', activeRes === 6 ? 'none' : 'visible');
+        }
+        // Poles + distribution lines: hidden at res 6 and 7, visible at res 9
+        if (map.getLayer('distribution-lines-layer')) {
+            map.setLayoutProperty('distribution-lines-layer', 'visibility', activeRes === 9 ? 'visible' : 'none');
+        }
+        if (map.getLayer('power-poles-circle')) {
+            map.setLayoutProperty('power-poles-circle', 'visibility', activeRes === 9 ? 'visible' : 'none');
+        }
+
+        // Red dots visibility is now handled by the animation functions above
+        // (animateRedDotsFromBubbles shows them, animateRedDotsToBubbles hides them)
+        // Only set directly when no animation is happening (e.g. initial load)
+        if (map.getLayer('random-poles-circle') && activeRes === prevRes) {
+            map.setLayoutProperty('random-poles-circle', 'visibility', activeRes === 9 ? 'visible' : 'none');
+            if (map.getLayer('random-poles-icon')) map.setLayoutProperty('random-poles-icon', 'visibility', activeRes === 9 ? 'visible' : 'none');
+        }
+    }
+
+    function updateStats(values, resolution) {
+        function set(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+        const total = values.reduce((a, b) => a + b, 0);
+        const sorted = [...values].sort((a, b) => a - b);
+        const median = sorted.length % 2 === 0
+            ? ((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2)
+            : sorted[Math.floor(sorted.length / 2)];
+        const avg = total / values.length;
+        const area = H3_AREAS[resolution] || 1;
+        const density = avg / area;
+        set('stat-total', total.toLocaleString());
+        set('stat-hexagons', values.length.toLocaleString());
+        set('stat-avg', avg.toFixed(1));
+        set('stat-median', median.toFixed(0));
+        set('stat-max', Math.max(...values).toLocaleString());
+        set('stat-min', Math.min(...values).toLocaleString());
+        set('stat-density', density < 1 ? density.toFixed(2) : density.toFixed(1));
+    }
+
+    let buildingsData = null;
+    let polesData = null;
+    let distributionData = null;
+    let redDotFeatures = [];
+    let redDotCounts = {};
+
+    // Seeded random for consistent red dot generation
+    let _seed = 12345;
+    function seededRandom() {
+        _seed = (_seed * 16807 + 0) % 2147483647;
+        return (_seed - 1) / 2147483646;
+    }
+
+    // Buffer a line into a thin polygon for fill-extrusion
+    function lineToPolygon(coords, widthM) {
+        const d = widthM / 111320;
+        const forward = [];
+        const backward = [];
+        for (let i = 0; i < coords.length; i++) {
+            const [lng, lat] = coords[i];
+            let dx, dy;
+            if (i < coords.length - 1) {
+                dx = coords[i + 1][0] - lng;
+                dy = coords[i + 1][1] - lat;
+            } else {
+                dx = lng - coords[i - 1][0];
+                dy = lat - coords[i - 1][1];
+            }
+            const len = Math.sqrt(dx * dx + dy * dy) || 1e-10;
+            const nx = -dy / len * d;
+            const ny = dx / len * d;
+            forward.push([lng + nx, lat + ny]);
+            backward.unshift([lng - nx, lat - ny]);
+        }
+        const ring = [...forward, ...backward, forward[0]];
+        return ring;
+    }
+
+    function pointToPolygon(lng, lat, radiusM) {
+        const r = radiusM / 111320;
+        const rLng = r / Math.cos(lat * Math.PI / 180);
+        const steps = 6;
+        const coords = [];
+        for (let i = 0; i <= steps; i++) {
+            const a = (i / steps) * 2 * Math.PI;
+            coords.push([lng + rLng * Math.cos(a), lat + r * Math.sin(a)]);
+        }
+        return coords;
+    }
+
+    // ─── generateRandomPoles: at most 2 red dots per building ───────────────
+    function generateRandomPoles() {
+        if (!polesData || !map.getSource('random-poles')) return;
+
+        _seed = 12345; // reset seed for consistent results
+        const randomFeatures = [];
+        const centerCell9 = getCenterCellForRes(9);
+        if (buildingsData) {
+            for (const f of buildingsData.features) {
+                // Only 30% of buildings get a dot
+                if (seededRandom() > 0.3) continue;
+                const coords = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] :
+                               f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : [];
+                if (coords.length === 0) continue;
+                let sumLng = 0, sumLat = 0;
+                for (const [lng, lat] of coords) { sumLng += lng; sumLat += lat; }
+                const cLng = sumLng / coords.length;
+                const cLat = sumLat / coords.length;
+
+                const spread = 0.0004;
+                const dotLng = cLng + (seededRandom() - 0.5) * spread;
+                const dotLat = cLat + (seededRandom() - 0.5) * spread;
+                const dotCell9 = h3.latLngToCell(dotLat, dotLng, 9);
+                randomFeatures.push({
+                    type: 'Feature',
+                    properties: { isCenter: dotCell9 === centerCell9 ? 1 : 0 },
+                    geometry: { type: 'Point', coordinates: [
+                        dotLng,
+                        dotLat
+                    ]}
+                });
+            }
+        }
+
+        console.log('Red dots generated:', randomFeatures.length);
+        redDotFeatures = randomFeatures;
+        map.getSource('random-poles').setData({
+            type: 'FeatureCollection',
+            features: randomFeatures
+        });
+        // Rebuild bubble counts from red dots
+        redDotCounts = {};
+        for (const f of randomFeatures) {
+            const [lng, lat] = f.geometry.coordinates;
+            for (const res of RES_STOPS) {
+                const cell = h3.latLngToCell(lat, lng, res);
+                if (!redDotCounts[res]) redDotCounts[res] = {};
+                redDotCounts[res][cell] = (redDotCounts[res][cell] || 0) + 1;
+            }
+        }
+        // Update canvas number balls
+        if (RES_STOPS[currentResIdx] !== 9) {
+            _currentBubbleFeatures = buildCountBubbles(RES_STOPS[currentResIdx]).features;
+            drawNumberBalls(_currentBubbleFeatures);
+        }
+    }
+
+    // ─── buildHexagons: sources for res 4, 7, 9 ───────────────
+    function buildHexagons(resolution) {
+        if (!polesData) return;
+
+        const { filteredIndexes, counts, maxCount, geojson } = computeRes(resolution);
+        const values = Object.values(counts);
+
+        if (!map.getSource('hex-grid-6')) {
+            // Pre-load all 3 resolution layers (4, 7, 9)
+            RES_STOPS.forEach(res => {
+                map.addSource(`hex-grid-${res}`, { type: 'geojson', data: computeRes(res).geojson });
+                map.addLayer({
+                    id: `hex-fill-${res}`,
+                    type: 'fill',
+                    source: `hex-grid-${res}`,
+                    paint: {
+                        'fill-color': ['get', 'color'],
+                        'fill-opacity': res === 6 ? 0.4 : 0,
+                        'fill-opacity-transition': { duration: 400, delay: 0 }
+                    }
+                });
+                map.addLayer({
+                    id: `hex-outline-${res}`,
+                    type: 'line',
+                    source: `hex-grid-${res}`,
+                    paint: {
+                        'line-color': '#9B7EC8',
+                        'line-width': 2.5,
+                        'line-opacity': res === 6 ? 0.9 : 0,
+                        'line-opacity-transition': { duration: 400, delay: 0 }
+                    }
+                });
+            });
+
+            // Count bubbles now drawn on 2D canvas overlay — no Mapbox layers needed
+            // Initial draw after data loads
+            _currentBubbleFeatures = buildCountBubbles(6).features;
+            resizeNumberCanvas();
+            drawNumberBalls(_currentBubbleFeatures);
+
+            // White transparent mask outside center hex
+            map.addSource('center-mask', { type: 'geojson', data: buildCenterMask(6) });
+            map.addLayer({
+                id: 'center-mask-fill',
+                type: 'fill',
+                source: 'center-mask',
+                paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.6 }
+            });
+
+            // Center hex outline on top of mask
+            const centerOutlineData = {
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'Polygon', coordinates: [h3ToGeoJSONPolygon(getCenterCell6())] }
+                }]
+            };
+            map.addSource('center-hex-outline', { type: 'geojson', data: centerOutlineData });
+            map.addLayer({
+                id: 'center-hex-outline-line',
+                type: 'line',
+                source: 'center-hex-outline',
+                paint: { 'line-color': '#9B7EC8', 'line-width': 2.5, 'line-opacity': 0.9 }
+            });
+
+            // Red dots layer — added above center mask so dots render on top
+            map.addSource('random-poles', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+            map.addLayer({
+                id: 'random-poles-circle',
+                type: 'circle',
+                source: 'random-poles',
+                layout: { 'visibility': 'none' },
+                paint: {
+                    'circle-radius': 10,
+                    'circle-color': '#ff0000',
+                    'circle-opacity': ['case', ['==', ['get', 'isCenter'], 1], 0.85, 0.4],
+                    'circle-stroke-width': 1.5,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-opacity': ['case', ['==', ['get', 'isCenter'], 1], 0.9, 0.2]
+                }
+            });
+
+            // Load outage SVG icon from file
+            const outageImg = new Image();
+            outageImg.onload = () => {
+                if (!map.hasImage('outage-icon')) map.addImage('outage-icon', outageImg, { sdf: false });
+            };
+            outageImg.src = 'outage.svg';
+
+            map.addLayer({
+                id: 'random-poles-icon',
+                type: 'symbol',
+                source: 'random-poles',
+                layout: {
+                    'visibility': 'none',
+                    'icon-image': 'outage-icon',
+                    'icon-size': 0.06,
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true
+                },
+                paint: {
+                    'icon-opacity': ['case', ['==', ['get', 'isCenter'], 1], 0.95, 0.35]
+                }
+            });
+
+            // Surrounding 6 neighbor hexagons at res-6 (white fill, outline only)
+            const center6 = getCenterCell6();
+            const neighbors = h3.gridDisk(center6, 1).filter(c => c !== center6);
+            const neighborGeojson = {
+                type: 'FeatureCollection',
+                features: neighbors.map(idx => ({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'Polygon', coordinates: [h3ToGeoJSONPolygon(idx)] }
+                }))
+            };
+            map.addSource('hex-neighbors-6', { type: 'geojson', data: neighborGeojson });
+            map.addLayer({
+                id: 'hex-neighbors-fill',
+                type: 'fill',
+                source: 'hex-neighbors-6',
+                layout: { 'visibility': 'none' },
+                paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 }
+            });
+            map.addLayer({
+                id: 'hex-neighbors-outline',
+                type: 'line',
+                source: 'hex-neighbors-6',
+                layout: { 'visibility': 'none' },
+                paint: { 'line-color': '#9B7EC8', 'line-width': 2.5, 'line-opacity': 0.9 }
+            });
+
+            // Move road and building layers above hexagon layers
+            const styleLayers = map.getStyle().layers;
+            for (const layer of styleLayers) {
+                if (layer.type === 'line' || layer.type === 'fill') {
+                    const id = layer.id.toLowerCase();
+                    if (id.includes('road') || id.includes('bridge') || id.includes('tunnel') || id.includes('building')) {
+                        map.moveLayer(layer.id);
+                    }
+                    if (id.includes('bridge')) {
+                        if (layer.type === 'line') {
+                            map.setPaintProperty(layer.id, 'line-color', '#FFFFFF');
+                        } else if (layer.type === 'fill') {
+                            map.setPaintProperty(layer.id, 'fill-color', '#FFFFFF');
+                        }
+                    }
+                }
+            }
+
+            // Filter poles to only those within the center res-7 hex boundary
+            const filteredPoles = {
+                type: 'FeatureCollection',
+                features: polesData.features.filter(f => {
+                    const [lng, lat] = f.geometry.coordinates;
+                    return isWithinHexBoundary(lng, lat);
+                }).map(f => ({
+                    type: 'Feature',
+                    properties: f.properties,
+                    geometry: { type: 'Polygon', coordinates: [pointToPolygon(f.geometry.coordinates[0], f.geometry.coordinates[1], 1)] }
+                }))
+            };
+            map.addSource('power-poles', { type: 'geojson', data: filteredPoles });
+            map.addLayer({
+                id: 'power-poles-circle',
+                type: 'fill-extrusion',
+                source: 'power-poles',
+                paint: {
+                    'fill-extrusion-color': '#777777',
+                    'fill-extrusion-height': 15,
+                    'fill-extrusion-base': 0,
+                    'fill-extrusion-opacity': 0.9
+                }
+            });
+
+            // outage icon hidden for now
+
+            // Distribution lines - elevated at 11.5m
+            if (distributionData && !map.getSource('distribution-lines')) {
+                map.addSource('distribution-lines', { type: 'geojson', data: distributionData, lineMetrics: true });
+                map.addLayer({
+                    id: 'distribution-lines-layer',
+                    type: 'line',
+                    source: 'distribution-lines',
+                    layout: {
+                        'visibility': RES_STOPS[currentResIdx] === 9 ? 'visible' : 'none',
+                        'line-z-offset': [
+                            'at-interpolated',
+                            ['*', ['line-progress'], ['-', ['length', ['get', 'elevation']], 1]],
+                            ['get', 'elevation']
+                        ],
+                        'line-elevation-reference': 'sea'
+                    },
+                    paint: {
+                        'line-emissive-strength': 1.0,
+                        'line-color': '#777777',
+                        'line-width': 1.5,
+                        'line-opacity': 0.7
+                    }
+                }, 'power-poles-circle');
+            }
+        }
+
+        if (map.getLayer('distribution-lines-layer')) map.moveLayer('distribution-lines-layer', 'power-poles-circle');
+
+        // Layer order: hex fills → buildings/roads/poles → hex outlines → mask → center outline → bubbles
+        RES_STOPS.forEach(res => {
+            if (map.getLayer(`hex-fill-${res}`)) map.moveLayer(`hex-fill-${res}`);
+        });
+        // Buildings, roads, distribution lines, poles, red dots
+        if (map.getLayer('buildings-fill')) map.moveLayer('buildings-fill');
+        const styleLayers = map.getStyle().layers;
+        for (const layer of styleLayers) {
+            const id = layer.id.toLowerCase();
+            if (id.includes('road') || id.includes('bridge') || id.includes('tunnel')) {
+                map.moveLayer(layer.id);
+            }
+        }
+        if (map.getLayer('distribution-lines-layer')) map.moveLayer('distribution-lines-layer');
+        if (map.getLayer('power-poles-circle')) map.moveLayer('power-poles-circle');
+        // Hex outlines above buildings/roads/poles
+        RES_STOPS.forEach(res => {
+            if (map.getLayer(`hex-outline-${res}`)) map.moveLayer(`hex-outline-${res}`);
+        });
+        if (map.getLayer('hex-neighbors-fill')) map.moveLayer('hex-neighbors-fill');
+        if (map.getLayer('hex-neighbors-outline')) map.moveLayer('hex-neighbors-outline');
+        // Mask on top of everything except center outline, red dots, and bubbles
+        if (map.getLayer('center-mask-fill')) map.moveLayer('center-mask-fill');
+        if (map.getLayer('center-hex-outline-line')) map.moveLayer('center-hex-outline-line');
+        // Red dots + outage icons above the mask
+        if (map.getLayer('random-poles-circle')) map.moveLayer('random-poles-circle');
+        if (map.getLayer('random-poles-icon')) map.moveLayer('random-poles-icon');
+        // count-bubbles now drawn on 2D canvas overlay
+        if (map.getLayer('spotlight-mask-fill')) map.moveLayer('spotlight-mask-fill');
+        if (map.getLayer('spotlight-border-line')) map.moveLayer('spotlight-border-line');
+
+        buildLegend(maxCount);
+        updateStats(values, resolution);
+        buildDistribution(values, maxCount);
+    }
+
+    // ─── Spotlight helpers (kept, but disabled) ─────────────────────────────────
+    const SPOTLIGHT_RADIUS_KM = 0.5;
+    const SPOTLIGHT_STEPS = 64;
+    const worldBounds = [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]];
+
+    function createCircleCoords(center, radiusKm, steps) {
+        const coords = [];
+        const earthRadius = 6371;
+        for (let i = 0; i <= steps; i++) {
+            const angle = (i / steps) * 2 * Math.PI;
+            const dLat = (radiusKm / earthRadius) * Math.cos(angle) * (180 / Math.PI);
+            const dLng = (radiusKm / earthRadius) * Math.sin(angle) * (180 / Math.PI) / Math.cos(center[1] * Math.PI / 180);
+            coords.push([center[0] + dLng, center[1] + dLat]);
+        }
+        return coords;
+    }
+
+    function buildSpotlightGeoJSON(center) {
+        const circleCoords = createCircleCoords(center, SPOTLIGHT_RADIUS_KM, SPOTLIGHT_STEPS);
+        const mask = {
+            type: 'Feature',
+            geometry: {
+                type: 'Polygon',
+                coordinates: [worldBounds, circleCoords.slice().reverse()]
+            }
+        };
+        const border = {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: circleCoords }
+        };
+        return { mask, border };
+    }
+
+    // ─── Map load ────────────────────────────────────────────────────────────────
+    map.on('load', () => {
+        setTimeout(() => map.resize(), 0);
+        map.setFog(null);
+        if (map.getLayer('background')) map.setPaintProperty('background', 'background-color', '#ffffff');
+        const layers = map.getStyle().layers;
+        for (const layer of layers) {
+            if (layer.type === 'symbol') {
+                map.setLayoutProperty(layer.id, 'visibility', 'none');
+            }
+            if (layer.id.toLowerCase().includes('building')) {
+                map.setLayerZoomRange(layer.id, 13, 24);
+            }
+        }
+
+        // Spotlight (disabled but sources still added for code compatibility)
+        const initial = buildSpotlightGeoJSON([-72.518160, 44.204957]);
+        map.addSource('spotlight-mask', { type: 'geojson', data: initial.mask });
+        map.addSource('spotlight-border', { type: 'geojson', data: initial.border });
+
+        map.addLayer({
+            id: 'spotlight-mask-fill',
+            type: 'fill',
+            source: 'spotlight-mask',
+            layout: { 'visibility': 'none' },
+            paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.8 }
+        });
+        map.addLayer({
+            id: 'spotlight-border-line',
+            type: 'line',
+            source: 'spotlight-border',
+            layout: { 'visibility': 'none' },
+            paint: { 'line-color': '#333333', 'line-width': 2, 'line-dasharray': [2, 3] }
+        });
+
+        // Load buildings filtered to the center hex boundary
+        fetch('buildings_3km.geojson')
+            .then(res => res.json())
+            .then(data => {
+                data.features = data.features.filter(f => {
+                    const coords = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] :
+                                   f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates[0][0] : [];
+                    return coords.every(([lng, lat]) => isWithinHexBoundary(lng, lat));
+                });
+                map.addSource('buildings', { type: 'geojson', data });
+                map.addLayer({
+                    id: 'buildings-fill',
+                    type: 'fill-extrusion',
+                    source: 'buildings',
+                    layout: { 'visibility': currentResIdx === 0 ? 'none' : 'visible' },
+                    paint: {
+                        'fill-extrusion-color': '#444444',
+                        'fill-extrusion-height': 7.5,
+                        'fill-extrusion-base': 0,
+                        'fill-extrusion-opacity': 0.95
+                    }
+                }, 'spotlight-mask-fill');
+
+                buildingsData = data;
+                generateRandomPoles();
+            });
+
+        // Load distribution lines — clip to res-9 H3 cells within res-4 hex
+        const res9Set = new Set(h3.cellToChildren(getCenterCell6(), 9));
+        fetch('distribution_lines.geojson')
+            .then(r => r.json())
+            .then(dlData => {
+                const clippedFeatures = [];
+                for (const f of dlData.features) {
+                    const isMulti = f.geometry.type === 'MultiLineString';
+                    const lines = isMulti ? f.geometry.coordinates : [f.geometry.coordinates];
+                    const clippedLines = [];
+                    for (const line of lines) {
+                        const clipped = line.filter(([lng, lat]) => res9Set.has(h3.latLngToCell(lat, lng, 9)));
+                        if (clipped.length >= 2) clippedLines.push(clipped);
+                    }
+                    if (clippedLines.length === 0) continue;
+                    for (const cl of clippedLines) {
+                        const elev = cl.map(() => 14);
+                        clippedFeatures.push({
+                            type: 'Feature',
+                            properties: { ...f.properties, elevation: elev },
+                            geometry: { type: 'LineString', coordinates: cl }
+                        });
+                    }
+                }
+                dlData.features = clippedFeatures;
+                distributionData = dlData;
+                console.log('Distribution lines loaded:', dlData.features.length);
+                // If poles already loaded, add layer now
+                if (map.getSource('power-poles') && !map.getSource('distribution-lines')) {
+                    map.addSource('distribution-lines', { type: 'geojson', data: distributionData, lineMetrics: true });
+                    map.addLayer({
+                        id: 'distribution-lines-layer',
+                        type: 'line',
+                        source: 'distribution-lines',
+                        layout: {
+                            'visibility': RES_STOPS[currentResIdx] === 9 ? 'visible' : 'none',
+                            'line-z-offset': [
+                                'at-interpolated',
+                                ['*', ['line-progress'], ['-', ['length', ['get', 'elevation']], 1]],
+                                ['get', 'elevation']
+                            ],
+                            'line-elevation-reference': 'sea'
+                        },
+                        paint: {
+                            'line-emissive-strength': 1.0,
+                            'line-color': '#777777',
+                            'line-width': 1.5,
+                            'line-opacity': 0.7
+                        }
+                    }, 'power-poles-circle');
+            
+                    if (map.getLayer('spotlight-mask-fill')) map.moveLayer('spotlight-mask-fill');
+                    if (map.getLayer('spotlight-border-line')) map.moveLayer('spotlight-border-line');
+                }
+            });
+
+        fetch('power_poles_vermont.geojson')
+            .then(res => res.json())
+            .then(data => {
+                polesData = data;
+                buildHexagons(6);   // start at res-6
+
+                // Hide roads, buildings, poles, distribution lines at res 6
+                const initLayers = map.getStyle().layers;
+                for (const layer of initLayers) {
+                    if (layer.type === 'symbol') continue;
+                    const id = layer.id.toLowerCase();
+                    if (id.includes('road') || id.includes('bridge') || id.includes('tunnel')) {
+                        map.setLayoutProperty(layer.id, 'visibility', 'none');
+                    }
+                }
+                if (map.getLayer('buildings-fill')) map.setLayoutProperty('buildings-fill', 'visibility', 'none');
+                if (map.getLayer('distribution-lines-layer')) map.setLayoutProperty('distribution-lines-layer', 'visibility', 'none');
+                if (map.getLayer('power-poles-circle')) map.setLayoutProperty('power-poles-circle', 'visibility', 'none');
+                // Precompute all resolution stops
+                setTimeout(() => { RES_STOPS.forEach(r => computeRes(r)); }, 100);
+                setTimeout(() => generateRandomPoles(), 200);
+                // Fly in immediately
+                setTimeout(() => {
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                    map.flyTo({
+                        center: BCENTER,
+                        zoom: 12.2,
+                        speed: 1.2,
+                        curve: 1.5,
+                        essential: true
+                    });
+                    map.once('moveend', () => {
+                        map.setMaxBounds([[-72.59, 44.14], [-72.45, 44.27]]);
+                    });
+                }, 300);
+
+            });
+    });
+
+    const spotlightPopup = new mapboxgl.Popup({
+        closeButton: false, closeOnClick: false, className: 'spotlight-popup', offset: [0, -10]
+    });
+
+    // Redraw number balls when map moves (fly animation, pan, zoom)
+    map.on('move', () => {
+        if (!_isMetaballAnimating && _currentBubbleFeatures) {
+            drawNumberBalls(_currentBubbleFeatures);
+        }
+    });
+
+    map.on('contextmenu', (e) => {
+        const { lng, lat } = e.lngLat;
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(`<strong>${lat.toFixed(6)}, ${lng.toFixed(6)}</strong>`)
+            .addTo(map);
+    });
+
+    // ─── Resolution tabs with autoplay ─────────────────────────────────────────
+    let currentResIdx = 0;
+    const resTabs = document.querySelectorAll('.res-tab');
+    const resTabsContainer = document.getElementById('res-tabs');
+
+    function switchToRes(idx) {
+        if (idx === currentResIdx) return;
+        currentResIdx = idx;
+        resTabs.forEach((tab, i) => tab.classList.toggle('active', i === idx));
+        renderInterpolated(idx);
+    }
+
+    // Click to switch
+    resTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const idx = parseInt(tab.dataset.idx);
+            switchToRes(idx);
+        });
+    });
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            const next = e.key === 'ArrowRight'
+                ? Math.min(currentResIdx + 1, RES_STOPS.length - 1)
+                : Math.max(currentResIdx - 1, 0);
+            switchToRes(next);
+        }
+    });
+
+    // Autoplay: cycle through resolutions
+    let _autoplayTimer = null;
+    let _autoplayPaused = false;
+    const AUTOPLAY_DELAY = 4000; // ms between switches
+
+    function autoplayNext() {
+        if (_autoplayPaused) return;
+        const next = (currentResIdx + 1) % RES_STOPS.length;
+        switchToRes(next);
+        _autoplayTimer = setTimeout(autoplayNext, AUTOPLAY_DELAY);
+    }
+
+    function startAutoplay() {
+        stopAutoplay();
+        _autoplayPaused = false;
+        _autoplayTimer = setTimeout(autoplayNext, AUTOPLAY_DELAY);
+    }
+
+    function stopAutoplay() {
+        if (_autoplayTimer) { clearTimeout(_autoplayTimer); _autoplayTimer = null; }
+    }
+
+    // Stop autoplay permanently on any user interaction
+    let _autoplayStopped = false;
+
+    resTabsContainer.addEventListener('mouseenter', () => {
+        _autoplayPaused = true;
+        stopAutoplay();
+    });
+    resTabsContainer.addEventListener('mouseleave', () => {
+        if (_autoplayStopped) return;
+        _autoplayPaused = false;
+        startAutoplay();
+    });
+
+    resTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            _autoplayStopped = true;
+            _autoplayPaused = true;
+            stopAutoplay();
+        });
+    });
+
+    // Start autoplay after initial load
+    map.once('idle', () => {
+        setTimeout(startAutoplay, 2000);
+    });
+</script>
+</body>
+</html>
